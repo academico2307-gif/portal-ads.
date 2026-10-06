@@ -713,6 +713,47 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
  const obs=new MutationObserver(()=>bind());obs.observe(document.body,{childList:true,subtree:true});
 })();
 </script>
+
+<script>
+/* ADS_R9_20261005_USD_REAL_CCL */
+(function(){
+ function cclSeries(){
+  const a=[];
+  for(const [d,z] of Object.entries(db.perfHistory||{})){const v=Number(z?.ccl);if(v>0)a.push({d:String(d).slice(0,10),v})}
+  for(const vals of Object.values(db.brokerPerf||{}))for(const z of (Array.isArray(vals)?vals:[])){const v=Number(z?.ccl),d=String(z?.date||'').slice(0,10);if(v>0&&d)a.push({d,v})}
+  a.sort((x,y)=>x.d.localeCompare(y.d));return a;
+ }
+ function cclOn(date){
+  let v=null;for(const z of cclSeries()){if(z.d<=date)v=z.v;else break}return v;
+ }
+ adsBrokerMonthReturn=async function(broker,m,cur='ARS'){
+  const y=new Date().getFullYear(),start=new Date(y,m,1),end=new Date(y,m+1,0),today=new Date();if(start>today)return null;if(end>today)end=today;
+  const ds=d=>d.toISOString().slice(0,10),s=ds(start),e=ds(end);
+  let v0=await adsValueAt(broker,s),v1=await adsValueAt(broker,e);if(v1==null)return null;v0=v0||0;
+  const raw=(db.moves||[]).filter(z=>adsCanonBroker(z.broker)===broker&&String(z.date||'').slice(0,10)>=s&&String(z.date||'').slice(0,10)<=e&&['compra','venta'].includes(String(z.type||'').toLowerCase()));
+  let c0=1,c1=1;if(cur==='USD'){c0=cclOn(s);c1=cclOn(e);if(!c0||!c1)return null;v0/=c0;v1/=c1}
+  let weighted=0,net=0;const days=Math.max(1,(end-start)/86400000);
+  for(const z of raw){
+   const date=String(z.date).slice(0,10),sign=String(z.type).toLowerCase()==='compra'?1:-1;let amt=sign*canonicalMoveAmount(z);
+   if(cur==='USD'){const cx=cclOn(date);if(!cx)return null;amt/=cx}
+   const elapsed=Math.max(0,(new Date(date+'T12:00:00')-start)/86400000),w=Math.max(0,1-elapsed/days);net+=amt;weighted+=amt*w;
+  }
+  const base=v0+weighted;if(!(base>0))return null;const r=(v1-v0-net)/base*100;
+  return Number.isFinite(r)?{r,w:base}:null;
+ };
+ renderMonthlyPerformance=async function(cur='ARS'){
+  adsSetPerfCurrency(cur);const run=++ADS_PERF_RUN,box=$('monthlyPerf');if(!box)return;
+  box.innerHTML='<div class="muted small perf-status">Calculando rendimiento real en '+cur+'…</div>';
+  if(cur==='USD'&&!cclSeries().length){adsPaintMonthly(ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)})),'USD','Falta CCL histórico para calcular USD.');return}
+  await adsWithTimeout(adsWarmHistorical(),12000,null);if(run!==ADS_PERF_RUN)return;
+  const rows=await adsWithTimeout(Promise.all(ADS_BROKERS.map(async([b])=>({b,vals:await Promise.all(Array.from({length:12},(_,m)=>adsWithTimeout(adsBrokerMonthReturn(b,m,cur),4000,null)))}))),18000,null);
+  if(run!==ADS_PERF_RUN)return;
+  if(rows&&rows.some(x=>x.vals.some(Boolean)))adsPaintMonthly(rows,cur,cur==='USD'?'USD calculado con CCL histórico de cada fecha disponible.':'ARS reconstruido con históricos disponibles.');
+  else adsPaintMonthly(ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)})),cur,cur==='USD'?'No hay CCL/precios históricos suficientes para esos meses.':'No hay precios históricos suficientes para esos meses.');
+ };
+ const a=$('perfARSBtn'),u=$('perfUSDBtn');if(a)a.onclick=()=>renderMonthlyPerformance('ARS');if(u)u.onclick=()=>renderMonthlyPerformance('USD');
+})();
+</script>
 </body></html>
 <style>
 /* Ajuste legibilidad ficha 05/10 */
