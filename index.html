@@ -893,4 +893,53 @@ const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase
  const a=$('perfARSBtn'),u=$('perfUSDBtn');if(a)a.onclick=()=>renderMonthlyPerformance('ARS');if(u)u.onclick=()=>renderMonthlyPerformance('USD');
 })();
 </script>
+
+<script>
+/* ADS_R11_20261005_CCL_ARGDATOS */
+(function(){
+ let ADS_CCL_SERIES=null, ADS_CCL_LOADING=null;
+ async function adsLoadCCLReal(){
+   if(ADS_CCL_SERIES?.length)return ADS_CCL_SERIES;
+   if(ADS_CCL_LOADING)return ADS_CCL_LOADING;
+   ADS_CCL_LOADING=(async()=>{
+     try{
+       const r=await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui',{cache:'no-store'});
+       if(!r.ok)throw new Error('HTTP '+r.status);
+       const j=await r.json();
+       ADS_CCL_SERIES=(Array.isArray(j)?j:[]).map(z=>({d:String(z.fecha||'').slice(0,10),v:Number(z.venta||z.compra)})).filter(z=>z.d&&z.v>0).sort((a,b)=>a.d.localeCompare(b.d));
+     }catch(e){ADS_CCL_SERIES=[]}
+     return ADS_CCL_SERIES;
+   })();
+   return ADS_CCL_LOADING;
+ }
+ function adsCCLAt(series,date){
+   let v=null;
+   for(const z of series){if(z.d<=date)v=z.v;else break}
+   return v;
+ }
+ adsBrokerMonthReturn=async function(broker,m,cur='ARS'){
+   const y=new Date().getFullYear(),start=new Date(y,m,1),end=new Date(y,m+1,0),today=new Date();if(start>today)return null;if(end>today)end=today;
+   const ds=d=>d.toISOString().slice(0,10),s=ds(start),e=ds(end);
+   let v0=await adsValueAt(broker,s),v1=await adsValueAt(broker,e);if(v1==null)return null;v0=v0||0;
+   let series=null;
+   if(cur==='USD'){series=await adsLoadCCLReal();const c0=adsCCLAt(series,s),c1=adsCCLAt(series,e);if(!c0||!c1)return null;v0/=c0;v1/=c1}
+   const raw=(db.moves||[]).filter(z=>adsCanonBroker(z.broker)===broker&&String(z.date||'').slice(0,10)>=s&&String(z.date||'').slice(0,10)<=e&&['compra','venta'].includes(String(z.type||'').toLowerCase()));
+   let weighted=0,net=0;const days=Math.max(1,(end-start)/86400000);
+   for(const z of raw){
+     const date=String(z.date).slice(0,10),sign=String(z.type).toLowerCase()==='compra'?1:-1;let amt=sign*canonicalMoveAmount(z);
+     if(cur==='USD'){const cx=adsCCLAt(series,date);if(!cx)return null;amt/=cx}
+     const elapsed=Math.max(0,(new Date(date+'T12:00:00')-start)/86400000),w=Math.max(0,1-elapsed/days);net+=amt;weighted+=amt*w;
+   }
+   const base=v0+weighted;if(!(base>0))return null;const r=(v1-v0-net)/base*100;
+   return Number.isFinite(r)?{r,w:base}:null;
+ };
+ const _renderR11=renderMonthlyPerformance;
+ renderMonthlyPerformance=async function(cur='ARS'){
+   if(cur==='USD')await adsLoadCCLReal();
+   return _renderR11(cur);
+ };
+ function bindR11(){const a=$('perfARSBtn'),u=$('perfUSDBtn');if(a)a.onclick=()=>renderMonthlyPerformance('ARS');if(u)u.onclick=()=>renderMonthlyPerformance('USD')}
+ bindR11();new MutationObserver(bindR11).observe(document.body,{childList:true,subtree:true});
+})();
+</script>
 </body></html>
