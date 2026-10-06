@@ -639,6 +639,38 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
 })();
 </script>
 
+
+<script>
+/* ADS_R6_20261005_SP500_STABLE */
+(function(){
+ const ADS_SP_CACHE='portal_ads_sp500_cache_v1';
+ function parseFred(txt,start){
+   if(!txt)return null;let first=null,last=null;
+   for(const line of txt.trim().split(/\r?\n/).slice(1)){
+     const a=line.split(','),d=(a[0]||'').trim(),v=Number(a[1]);
+     if(Number.isFinite(v)&&v>0){if(d>=start&&first==null)first=v;last=v}
+   }
+   return first&&last?((last/first)-1)*100:null;
+ }
+ function parseStooq(txt,start){
+   if(!txt)return null;let first=null,last=null;
+   for(const line of txt.trim().split(/\r?\n/).slice(1)){
+     const a=line.split(','),d=(a[0]||'').trim(),v=Number(a[4]);
+     if(Number.isFinite(v)&&v>0&&d>=start){if(first==null)first=v;last=v}
+   }
+   return first&&last?((last/first)-1)*100:null;
+ }
+ sp500ReturnFrom=async function(start){
+   const end=new Date().toISOString().slice(0,10),tries=[
+     async()=>parseFred(await adsWithTimeout(fetchTextChain('https://fred.stlouisfed.org/graph/fredgraph.csv?id=SP500&cosd='+encodeURIComponent(start)+'&coed='+encodeURIComponent(end)),8500,null),start),
+     async()=>parseStooq(await adsWithTimeout(fetchTextChain('https://stooq.com/q/d/l/?s=%5Espx&i=d&d1='+start.replaceAll('-','')+'&d2='+end.replaceAll('-','')),8500,null),start)
+   ];
+   for(const fn of tries){try{const v=await fn();if(Number.isFinite(v)){try{localStorage.setItem(ADS_SP_CACHE,JSON.stringify({start,end,v,ts:Date.now()}))}catch(e){}return v}}catch(e){}}
+   try{const z=JSON.parse(localStorage.getItem(ADS_SP_CACHE)||'null');if(z&&z.start===start&&Number.isFinite(z.v))return z.v}catch(e){}
+   return null;
+ };
+})();
+</script>
 </body></html>
 <style>
 /* Ajuste legibilidad ficha 05/10 */
