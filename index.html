@@ -942,4 +942,47 @@ const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase
  bindR11();new MutationObserver(bindR11).observe(document.body,{childList:true,subtree:true});
 })();
 </script>
+
+<script>
+/* ADS_R11_20261005_CCL_ARGDATOS_SP500 */
+(function(){
+ let ADS_CCL_REMOTE=null;
+ async function adsCCLRemote(){
+  if(ADS_CCL_REMOTE)return ADS_CCL_REMOTE;
+  try{
+   const r=await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui',{cache:'no-store'});
+   if(!r.ok)throw 0;const j=await r.json();
+   const a=(Array.isArray(j)?j:[]).map(z=>({d:String(z.fecha||'').slice(0,10),v:Number(z.venta||z.compra)})).filter(z=>z.d&&z.v>0).sort((a,b)=>a.d.localeCompare(b.d));
+   if(a.length)ADS_CCL_REMOTE=a;
+  }catch(e){}
+  return ADS_CCL_REMOTE||[];
+ }
+ function adsCCLFind(a,date){let v=null;for(const z of a){if(z.d<=date)v=z.v;else break}return v}
+ adsBrokerMonthReturn=async function(broker,m,cur='ARS'){
+  const y=new Date().getFullYear(),start=new Date(y,m,1),end=new Date(y,m+1,0),today=new Date();if(start>today)return null;if(end>today)end=today;
+  const ds=d=>d.toISOString().slice(0,10),s=ds(start),e=ds(end);
+  let v0=await adsValueAt(broker,s),v1=await adsValueAt(broker,e);if(v1==null)return null;v0=v0||0;
+  const flows=(db.moves||[]).filter(z=>adsCanonBroker(z.broker)===broker&&String(z.date||'').slice(0,10)>=s&&String(z.date||'').slice(0,10)<=e&&['compra','venta'].includes(String(z.type||'').toLowerCase()));
+  let ccl=[];if(cur==='USD'){ccl=await adsCCLRemote();if(!ccl.length)return null;const c0=adsCCLFind(ccl,s),c1=adsCCLFind(ccl,e);if(!c0||!c1)return null;v0/=c0;v1/=c1}
+  let weighted=0,net=0;const days=Math.max(1,(end-start)/86400000);
+  for(const z of flows){const date=String(z.date).slice(0,10),sign=String(z.type).toLowerCase()==='compra'?1:-1;let amt=sign*canonicalMoveAmount(z);if(cur==='USD'){const cx=adsCCLFind(ccl,date);if(!cx)return null;amt/=cx}const elapsed=Math.max(0,(new Date(date+'T12:00:00')-start)/86400000),w=Math.max(0,1-elapsed/days);net+=amt;weighted+=amt*w}
+  const base=v0+weighted;if(!(base>0))return null;const r=(v1-v0-net)/base*100;return Number.isFinite(r)?{r,w:base}:null;
+ };
+ renderMonthlyPerformance=async function(cur='ARS'){
+  adsSetPerfCurrency(cur);const run=++ADS_PERF_RUN,box=$('monthlyPerf');if(!box)return;box.innerHTML='<div class="muted small perf-status">Calculando rendimiento en '+cur+'…</div>';
+  if(cur==='USD'){const a=await adsCCLRemote();if(!a.length){adsPaintMonthly(ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)})),'USD','No pude cargar CCL histórico.');return}}
+  await adsWithTimeout(adsWarmHistorical(),12000,null);if(run!==ADS_PERF_RUN)return;
+  const rows=await Promise.all(ADS_BROKERS.map(async([b])=>({b,vals:await Promise.all(Array.from({length:12},(_,m)=>adsWithTimeout(adsBrokerMonthReturn(b,m,cur),5000,null)))})));if(run!==ADS_PERF_RUN)return;
+  adsPaintMonthly(rows,cur,cur==='USD'?'USD calculado con CCL histórico real de ArgentinaDatos.':'ARS reconstruido con históricos disponibles.');
+ };
+ sp500ReturnFrom=async function(start){
+  const end=new Date().toISOString().slice(0,10);
+  const target='https://fred.stlouisfed.org/graph/fredgraph.csv?id=SP500&cosd='+encodeURIComponent(start)+'&coed='+encodeURIComponent(end);
+  const urls=[target,'https://r.jina.ai/http://fred.stlouisfed.org/graph/fredgraph.csv?id=SP500%26cosd='+encodeURIComponent(start)+'%26coed='+encodeURIComponent(end)];
+  for(const u of urls){try{const r=await fetch(u,{cache:'no-store'});if(!r.ok)continue;const txt=await r.text();let first=null,last=null;for(const line of txt.split(/\r?\n/)){const a=line.split(','),d=(a[0]||'').trim(),v=Number(a[1]);if(d>=start&&Number.isFinite(v)&&v>0){if(first==null)first=v;last=v}}if(first&&last)return(last/first-1)*100}catch(e){}}
+  return null;
+ };
+ const bind=()=>{const a=$('perfARSBtn'),u=$('perfUSDBtn');if(a)a.onclick=()=>renderMonthlyPerformance('ARS');if(u)u.onclick=()=>renderMonthlyPerformance('USD')};bind();
+})();
+</script>
 </body></html>
