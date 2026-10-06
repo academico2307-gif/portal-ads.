@@ -754,7 +754,7 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
  const a=$('perfARSBtn'),u=$('perfUSDBtn');if(a)a.onclick=()=>renderMonthlyPerformance('ARS');if(u)u.onclick=()=>renderMonthlyPerformance('USD');
 })();
 </script>
-</body></html>
+
 <style>
 /* Ajuste legibilidad ficha 05/10 */
 #assetModal .modal-widget,#assetModal .modal-widget *{font-size:17px!important;line-height:1.52!important}
@@ -849,3 +849,18 @@ function renderRFCurve(){
 function openRFFlow(t){show('flujo',navButton('flujo'));if($('sTicker'))$('sTicker').value=t;setTimeout(()=>{const row=[...document.querySelectorAll('#simTable tr')].find(r=>r.textContent.includes(t));row?.scrollIntoView({behavior:'smooth',block:'center'})},120)}
 const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase.apply(this,arguments);try{renderRFCurve()}catch(e){console.warn('Curva RF',e)}return r};
 </script>
+
+
+<script>
+/* ADS_R10_20261005_FINAL_AUTHORITY */
+(function(){
+ function bindPerfFinal(){
+  const a=$('perfARSBtn'),u=$('perfUSDBtn');
+  if(a)a.onclick=()=>renderMonthlyPerformance('ARS');
+  if(u)u.onclick=()=>renderMonthlyPerformance('USD');
+ }
+ bindPerfFinal();
+ new MutationObserver(bindPerfFinal).observe(document.body,{childList:true,subtree:true});
+})();
+</script>
+</body></html>
