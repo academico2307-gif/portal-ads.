@@ -611,6 +611,34 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
 
 
 <script>/* ADS_R4_20261005 */ const ADS_R4_ACTIVE=true;</script>
+
+<script>
+/* ADS_R5_20261005 */
+(function(){
+ const oldCompare=compareSP500;
+ compareSP500=async function(){
+   await oldCompare();
+   const el=$('spCompare');
+   if(el) el.innerHTML=el.innerHTML.replace(/\spp<\/b>/g,'%</b>');
+ };
+ let seq=0;
+ async function adsSwitchPerfR5(cur){
+   const my=++seq;
+   adsSetPerfCurrency(cur);
+   const box=$('monthlyPerf');
+   if(box) box.innerHTML='<div class="muted small perf-status">Calculando rendimiento en '+cur+'…</div>';
+   if(cur==='USD'){
+     const hasCCL=Object.values(db.perfHistory||{}).some(z=>Number(z?.ccl)>0)||Object.values(db.brokerPerf||{}).flat().some(z=>Number(z?.ccl)>0);
+     if(!hasCCL){if(my!==seq)return;const rows=ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)}));adsPaintMonthly(rows,'USD','Falta CCL histórico para calcular USD correctamente.');return}
+   }
+   await renderMonthlyPerformance(cur);
+ }
+ const a=$('perfARSBtn'),u=$('perfUSDBtn');
+ if(a)a.onclick=()=>adsSwitchPerfR5('ARS');
+ if(u)u.onclick=()=>adsSwitchPerfR5('USD');
+})();
+</script>
+
 </body></html>
 <style>
 /* Ajuste legibilidad ficha 05/10 */
