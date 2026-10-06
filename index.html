@@ -743,6 +743,7 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
  };
  renderMonthlyPerformance=async function(cur='ARS'){
   adsSetPerfCurrency(cur);const run=++ADS_PERF_RUN,box=$('monthlyPerf');if(!box)return;
+  if(cur==='USD'&&!(window.ADS_CCL_REMOTE||[]).length){try{const r=await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui',{cache:'no-store'});if(r.ok){const j=await r.json();window.ADS_CCL_REMOTE=(Array.isArray(j)?j:[]).map(z=>({d:String(z.fecha||'').slice(0,10),v:Number(z.venta||z.compra)})).filter(z=>z.d&&z.v>0).sort((a,b)=>a.d.localeCompare(b.d));}}catch(e){}}
   if(cur==='USD'&&!(window.ADS_CCL_REMOTE||[]).length){try{const j=await fetchJsonChain('https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui');const a=Array.isArray(j)?j:[];window.ADS_CCL_REMOTE=a.map(z=>({d:String(z.fecha||'').slice(0,10),v:Number(z.venta||z.compra)})).filter(z=>z.d&&z.v>0).sort((a,b)=>a.d.localeCompare(b.d));}catch(e){}}
   box.innerHTML='<div class="muted small perf-status">Calculando rendimiento real en '+cur+'…</div>';
   if(cur==='USD'&&!cclSeries().length){adsPaintMonthly(ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)})),'USD','Falta CCL histórico para calcular USD.');return}
