@@ -671,6 +671,34 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
  };
 })();
 </script>
+
+<script>
+/* ADS_R7_20261005_RENDIMIENTO_GUARD */
+(function(){
+ function adsBlankRows(){return ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)}))}
+ let token=0;
+ async function switchR7(cur){
+   const mine=++token; adsSetPerfCurrency(cur);
+   if(cur==='USD'){
+     const hasCCL=Object.values(db.perfHistory||{}).some(z=>Number(z?.ccl)>0)||Object.values(db.brokerPerf||{}).flat().some(z=>Number(z?.ccl)>0);
+     if(!hasCCL){adsPaintMonthly(adsBlankRows(),'USD','Falta CCL histórico suficiente para calcular USD.');return}
+   }
+   await renderMonthlyPerformance(cur);
+   if(mine!==token)return;
+ }
+ const a=$('perfARSBtn'),u=$('perfUSDBtn');
+ if(a)a.onclick=()=>switchR7('ARS'); if(u)u.onclick=()=>switchR7('USD');
+
+ const oldCompare=compareSP500;
+ compareSP500=async function(){
+   const el=$('spCompare'); if(!el)return;
+   const cacheKey='portal_ads_sp500_display_v1',prev=(()=>{try{return JSON.parse(localStorage.getItem(cacheKey)||'null')}catch(e){return null}})();
+   await oldCompare();
+   if(/No pude obtener/i.test(el.textContent||'')&&prev?.html){el.innerHTML=prev.html+' <span class="muted">(último dato disponible)</span>';return}
+   if(!/No pude obtener|Consultando/i.test(el.textContent||'')){try{localStorage.setItem(cacheKey,JSON.stringify({html:el.innerHTML,ts:Date.now()}))}catch(e){}}
+ };
+})();
+</script>
 </body></html>
 <style>
 /* Ajuste legibilidad ficha 05/10 */
