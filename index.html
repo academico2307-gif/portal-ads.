@@ -718,7 +718,7 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
 /* ADS_R9_20261005_USD_REAL_CCL */
 (function(){
  function cclSeries(){
-  const a=[];
+  const a=[...(window.ADS_CCL_REMOTE||[])];
   for(const [d,z] of Object.entries(db.perfHistory||{})){const v=Number(z?.ccl);if(v>0)a.push({d:String(d).slice(0,10),v})}
   for(const vals of Object.values(db.brokerPerf||{}))for(const z of (Array.isArray(vals)?vals:[])){const v=Number(z?.ccl),d=String(z?.date||'').slice(0,10);if(v>0&&d)a.push({d,v})}
   a.sort((x,y)=>x.d.localeCompare(y.d));return a;
@@ -743,6 +743,7 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
  };
  renderMonthlyPerformance=async function(cur='ARS'){
   adsSetPerfCurrency(cur);const run=++ADS_PERF_RUN,box=$('monthlyPerf');if(!box)return;
+  if(cur==='USD'&&!(window.ADS_CCL_REMOTE||[]).length){try{const j=await fetchJsonChain('https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui');const a=Array.isArray(j)?j:[];window.ADS_CCL_REMOTE=a.map(z=>({d:String(z.fecha||'').slice(0,10),v:Number(z.venta||z.compra)})).filter(z=>z.d&&z.v>0).sort((a,b)=>a.d.localeCompare(b.d));}catch(e){}}
   box.innerHTML='<div class="muted small perf-status">Calculando rendimiento real en '+cur+'…</div>';
   if(cur==='USD'&&!cclSeries().length){adsPaintMonthly(ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)})),'USD','Falta CCL histórico para calcular USD.');return}
   await adsWithTimeout(adsWarmHistorical(),12000,null);if(run!==ADS_PERF_RUN)return;
@@ -861,6 +862,34 @@ const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase
  }
  bindPerfFinal();
  new MutationObserver(bindPerfFinal).observe(document.body,{childList:true,subtree:true});
+})();
+</script>
+
+<script>
+/* ADS_R11_20261005_DATA_SOURCES */
+(function(){
+ fetchTextChain=async function(target){
+   const urls=[target,'https://corsproxy.io/?url='+encodeURIComponent(target),'https://api.allorigins.win/raw?url='+encodeURIComponent(target),'https://r.jina.ai/http://'+target.replace(/^https?:\/\//,'')];
+   for(const url of urls){try{const r=await fetchFast(url,{cache:'no-store'},5000);if(!r.ok)continue;const t=await r.text();if(t&&t.length>20)return t}catch(e){}}
+   return null;
+ };
+ sp500ReturnFrom=async function(start){
+   const end=new Date().toISOString().slice(0,10);
+   try{
+     const txt=await fetchTextChain('https://fred.stlouisfed.org/graph/fredgraph.csv?id=SP500&cosd='+encodeURIComponent(start)+'&coed='+encodeURIComponent(end));
+     if(txt){
+       let first=null,last=null;
+       for(const line of txt.split(/\r?\n/)){
+         const m=line.match(/^(\d{4}-\d{2}-\d{2})[,;\s]+([0-9.]+)$/);if(!m)continue;
+         const d=m[1],v=Number(m[2]);if(d>=start&&v>0&&first==null)first=v;if(v>0)last=v;
+       }
+       if(first&&last){try{localStorage.setItem('portal_ads_sp500_r11',JSON.stringify({start,v:(last/first-1)*100,ts:Date.now()}))}catch(e){};return(last/first-1)*100}
+     }
+   }catch(e){}
+   try{const z=JSON.parse(localStorage.getItem('portal_ads_sp500_r11')||'null');if(z&&z.start===start&&Number.isFinite(z.v))return z.v}catch(e){}
+   return null;
+ };
+ const a=$('perfARSBtn'),u=$('perfUSDBtn');if(a)a.onclick=()=>renderMonthlyPerformance('ARS');if(u)u.onclick=()=>renderMonthlyPerformance('USD');
 })();
 </script>
 </body></html>
