@@ -1013,4 +1013,45 @@ const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase
  };
 })();
 </script>
+
+<script>
+/* ADS_R11_20261005_SP500_JSON */
+(function(){
+ const SP_URL='https://autario.com/api/v1/public/datasets/5b6ac5d6-8e39-44fa-9c07-adee9fcaa2fb/data';
+ async function spRows(start){
+   const urls=[
+     SP_URL+'?filter=date:gte:'+encodeURIComponent(start)+'&sort=date:asc&limit=5000',
+     SP_URL+'?sort=date:asc&limit=5000'
+   ];
+   for(const u of urls){
+     try{
+       const r=await fetch(u,{cache:'no-store'});
+       if(!r.ok)continue;
+       const j=await r.json(),a=Array.isArray(j)?j:(j.data||j.results||j.rows||[]);
+       const rows=a.map(z=>({d:String(z.date||z.observation_date||'').slice(0,10),v:Number(z.value??z.SP500??z.close)})).filter(z=>z.d>=start&&Number.isFinite(z.v)&&z.v>0).sort((a,b)=>a.d.localeCompare(b.d));
+       if(rows.length>1)return rows;
+     }catch(e){}
+   }
+   return [];
+ }
+ sp500ReturnFrom=async function(start){
+   try{
+     const rows=await spRows(start);
+     if(rows.length>1){
+       const v=(rows[rows.length-1].v/rows[0].v-1)*100;
+       localStorage.setItem('portal_ads_sp500_return_v2',JSON.stringify({start,v,ts:Date.now()}));
+       return v;
+     }
+   }catch(e){}
+   try{const z=JSON.parse(localStorage.getItem('portal_ads_sp500_return_v2')||'null');if(z&&z.start===start&&Number.isFinite(z.v))return z.v}catch(e){}
+   return null;
+ };
+ const old=compareSP500;
+ compareSP500=async function(){
+   await old();
+   const el=$('spCompare');
+   if(el)el.innerHTML=el.innerHTML.replace(/\spp<\/b>/g,'%</b>');
+ };
+})();
+</script>
 </body></html>
