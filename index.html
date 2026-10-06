@@ -699,6 +699,20 @@ const _modalClosure=openAssetModal;openAssetModal=function(t,origin){_modalClosu
  };
 })();
 </script>
+
+<script>
+/* ADS_R8_20261005_HARDEN_RENDIMIENTO */
+(function(){
+ const blank=()=>ADS_BROKERS.map(([b])=>({b,vals:Array(12).fill(null)}));
+ function bind(){
+  const a=$('perfARSBtn'),u=$('perfUSDBtn');
+  if(a)a.onclick=()=>{adsSetPerfCurrency('ARS');renderMonthlyPerformance('ARS')};
+  if(u)u.onclick=()=>{adsSetPerfCurrency('USD');const has=Object.values(db.perfHistory||{}).some(z=>Number(z?.ccl)>0)||Object.values(db.brokerPerf||{}).flat().some(z=>Number(z?.ccl)>0);if(!has){adsPaintMonthly(blank(),'USD','Falta CCL histórico suficiente para calcular USD.');return}renderMonthlyPerformance('USD')};
+ }
+ bind();
+ const obs=new MutationObserver(()=>bind());obs.observe(document.body,{childList:true,subtree:true});
+})();
+</script>
 </body></html>
 <style>
 /* Ajuste legibilidad ficha 05/10 */
