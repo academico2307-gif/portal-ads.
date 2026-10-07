@@ -1094,3 +1094,44 @@ const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase
  [0,300,1000,2500,6000].forEach(t=>setTimeout(()=>draw(window.ADS_PERF_CURRENCY||'ARS'),t));
 })();
 </script>
+
+
+<style>
+#adsCloudBar{position:fixed;right:14px;bottom:14px;z-index:9998;background:#0d1d2b;border:1px solid #31536b;border-radius:12px;padding:8px 11px;color:#cfe8f7;font:12px system-ui;box-shadow:0 10px 35px #0008;display:none;gap:8px;align-items:center}#adsCloudBar button{padding:5px 8px;font-size:11px}#adsLogin{position:fixed;inset:0;z-index:9999;background:rgba(3,9,14,.94);display:flex;align-items:center;justify-content:center;padding:18px;font-family:system-ui;color:#e8f3fa}#adsLogin .box{width:min(430px,100%);background:#0c1722;border:1px solid #31536b;border-radius:16px;padding:24px;box-shadow:0 30px 90px #000}#adsLogin h2{margin:0 0 6px}#adsLogin p{color:#91a9b8;font-size:13px;line-height:1.45}#adsLogin label{display:block;margin-top:13px;font-size:12px;color:#b7cad6}#adsLogin input{box-sizing:border-box;width:100%;margin-top:5px;padding:12px;border-radius:9px;border:1px solid #31536b;background:#071018;color:#fff;font-size:16px}#adsLogin button{width:100%;margin-top:16px;padding:12px;border:0;border-radius:9px;background:#1fbf8f;color:#04110d;font-weight:800;cursor:pointer}#adsLoginMsg{min-height:18px;margin-top:10px;font-size:12px;color:#ff8b8b}.ads-cloud-ok{color:#64e6b5}.ads-cloud-warn{color:#ffd36a}
+</style>
+<div id="adsLogin">
+ <div class="box"><h2>Portal ADS</h2><p>Ingresá con el usuario que creaste en Supabase. Esta cuenta mantiene una única cartera sincronizada entre tus dispositivos.</p><label>Correo electrónico<input id="adsEmail" type="email" autocomplete="username"></label><label>Contraseña<input id="adsPass" type="password" autocomplete="current-password"></label><button id="adsLoginBtn" type="button">Entrar a mi cartera</button><div id="adsLoginMsg"></div></div>
+</div>
+<div id="adsCloudBar"><span id="adsCloudStatus">Nube</span><button id="adsLogoutBtn" type="button">Salir</button></div>
+<script>
+/* === PORTAL ADS · NUBE PRIVADA SUPABASE · 07/10/2026 === */
+(function(){
+ const SB_URL='https://dmhbvnohpoiutzuydklk.supabase.co';
+ const SB_KEY='sb_publishable_MV9kidSTQqE9LeYJ_wqqYw_g7tRQ_G6';
+ const TOKEN_KEY='portal_ads_supabase_session_v1';
+ let session=null, cloudReady=false, cloudTimer=null, cloudBusy=false, pending=false;
+ const login=document.getElementById('adsLogin'), msg=document.getElementById('adsLoginMsg'), bar=document.getElementById('adsCloudBar'), stat=document.getElementById('adsCloudStatus');
+ const rawSet=Storage.prototype.setItem;
+ function headers(auth=true){const h={'apikey':SB_KEY,'Content-Type':'application/json'};if(auth&&session?.access_token)h.Authorization='Bearer '+session.access_token;return h}
+ function status(t,cls=''){stat.textContent=t;stat.className=cls}
+ async function request(path,opt={}){const r=await fetch(SB_URL+path,opt);let body=null;const tx=await r.text();if(tx){try{body=JSON.parse(tx)}catch(_){body=tx}}if(!r.ok)throw new Error(body?.msg||body?.message||body?.error_description||('Error '+r.status));return body}
+ async function signIn(email,password){return request('/auth/v1/token?grant_type=password',{method:'POST',headers:headers(false),body:JSON.stringify({email,password})})}
+ async function refreshSession(){if(!session?.refresh_token)return false;try{session=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:headers(false),body:JSON.stringify({refresh_token:session.refresh_token})});rawSet.call(localStorage,TOKEN_KEY,JSON.stringify(session));return true}catch(_){return false}}
+ async function cloudGet(){return request('/rest/v1/portal_ads_data?select=data,updated_at&user_id=eq.'+encodeURIComponent(session.user.id),{headers:headers()})}
+ async function cloudPut(){if(!cloudReady||!session?.user||cloudBusy){pending=true;return}cloudBusy=true;pending=false;status('Guardando…','ads-cloud-warn');try{await request('/rest/v1/portal_ads_data?on_conflict=user_id',{method:'POST',headers:{...headers(),'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:session.user.id,data:db,updated_at:new Date().toISOString()})});status('Sincronizado ✓','ads-cloud-ok')}catch(e){if(String(e.message).includes('JWT')&&await refreshSession()){cloudBusy=false;return cloudPut()}status('Sin conexión','ads-cloud-warn');console.warn('Portal ADS nube:',e)}finally{cloudBusy=false;if(pending){pending=false;setTimeout(cloudPut,150)}}}
+ function queueCloud(){if(!cloudReady)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(cloudPut,450)}
+ Storage.prototype.setItem=function(k,v){rawSet.call(this,k,v);if(this===localStorage&&k===KEY)queueCloud()};
+ async function enterCloud(){status('Conectando…','ads-cloud-warn');bar.style.display='flex';let rows;try{rows=await cloudGet()}catch(e){if(String(e.message).includes('JWT')&&await refreshSession())rows=await cloudGet();else throw e}
+   if(Array.isArray(rows)&&rows.length&&rows[0]?.data&&typeof rows[0].data==='object'){
+     db=rows[0].data;if(!Array.isArray(db.moves))db.moves=[];db.prices=db.prices||{};db.alerts=db.alerts||[];db.ratios=db.ratios||{};db.sim=db.sim||[];db.brokerPerf=db.brokerPerf||{};db.perfHistory=db.perfHistory||{};db.fx=db.fx||{ccl:0,mep:0,official:0,date:''};rawSet.call(localStorage,KEY,JSON.stringify(db));cloudReady=true;try{render()}catch(e){console.warn(e)}status('Sincronizado ✓','ads-cloud-ok');
+   }else{
+     cloudReady=true;await cloudPut();status('Cartera subida ✓','ads-cloud-ok');
+   }
+   login.style.display='none';
+ }
+ async function doLogin(){const email=document.getElementById('adsEmail').value.trim(),password=document.getElementById('adsPass').value;if(!email||!password){msg.textContent='Completá correo y contraseña.';return}msg.textContent='Ingresando…';document.getElementById('adsLoginBtn').disabled=true;try{session=await signIn(email,password);rawSet.call(localStorage,TOKEN_KEY,JSON.stringify(session));await enterCloud();msg.textContent=''}catch(e){msg.textContent='No se pudo ingresar: '+e.message}finally{document.getElementById('adsLoginBtn').disabled=false}}
+ document.getElementById('adsLoginBtn').onclick=doLogin;document.getElementById('adsPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});document.getElementById('adsLogoutBtn').onclick=()=>{session=null;cloudReady=false;localStorage.removeItem(TOKEN_KEY);bar.style.display='none';login.style.display='flex';document.getElementById('adsPass').value='';msg.textContent='Sesión cerrada.'};
+ (async()=>{try{session=JSON.parse(localStorage.getItem(TOKEN_KEY)||'null');if(session?.access_token){try{await enterCloud();return}catch(e){if(await refreshSession()){await enterCloud();return}}}}catch(e){console.warn(e)}login.style.display='flex'})();
+ window.addEventListener('online',()=>{if(cloudReady)cloudPut()});
+})();
+</script>
