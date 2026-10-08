@@ -176,7 +176,7 @@ function holdings(){
     if(!['compra','venta'].includes(type)) continue;
     const ticker=String(m.ticker).trim().toUpperCase();
     const cat=String(m.cat||'Otro');
-    const broker=String(m.broker||'Sin broker').trim()||'Sin broker';
+    const broker=adsBrokerName(m.broker);
     const key=[ticker,cat,broker].join('|');
     let x=groups.get(key);
     if(!x){x={ticker,cat,broker,qty:0,cost:0};groups.set(key,x)}
@@ -1298,4 +1298,56 @@ const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase
  (async()=>{try{session=JSON.parse(localStorage.getItem(TOKEN_KEY)||'null');if(session?.access_token){try{await enterCloud();return}catch(e){if(await refreshSession()){await enterCloud();return}}}}catch(e){console.warn(e)}login.style.display='flex'})();
  window.addEventListener('online',()=>{if(cloudReady)cloudPut()});
 })();
+</script>
+
+
+<style id="ads-v7-targeted">
+.rf-axis{fill:#d9e8f4!important;font-size:13px!important;font-weight:600}.rf-curve{overflow-x:auto;min-height:300px}.rf-curve svg{height:auto;min-height:300px}.rf-dot text{paint-order:stroke;stroke:#08131d;stroke-width:3px;stroke-linejoin:round}
+#rfCurveNotes{color:#b4c7d5;font-size:12px;line-height:1.5;margin-top:8px}
+#brokersTable details{min-width:125px;text-align:left}#brokersTable summary{cursor:pointer;color:#91d5ff;white-space:nowrap;padding:5px}#brokersTable details .tag{margin:3px}
+#adsBiometricBtn{border-color:#3b7295!important;color:#c5edff!important}
+@media(max-width:600px){#adsCloudBar{right:8px;bottom:8px;max-width:calc(100vw - 16px);flex-wrap:wrap;justify-content:center}#adsCloudBar button{font-size:12px!important}#rfCurve svg{min-width:510px}}
+</style>
+<script>
+/* ADS v7: correcciones puntuales, sin alterar movimientos almacenados ni conexión de nube. */
+function adsBrokerName(name){const n=String(name||'').trim().toLowerCase().replace(/\s+/g,' ');if(!n)return 'Sin broker';if(n==='bull'||n==='bull market'||n==='bull market brokers')return 'BULL';if(n==='balanz'||n==='balance')return 'BALANZ';if(n==='iol'||n==='invertir online')return 'IOL';if(n==='eco'||n==='eco valores'||n==='ecovalores')return 'ECO VALORES';if(n==='coco'||n==='cocos')return 'COCOS';return String(name).trim().toUpperCase()}
+function renderBrokers(){
+ brokerSnapshot();const b=new Map();for(const x of brokerPositions()){const name=adsBrokerName(x.broker);if(!b.has(name))b.set(name,{value:0,cost:0,tickers:new Set()});const z=b.get(name);z.value+=positionValuation(x);z.cost+=x.cost;z.tickers.add(x.ticker)}
+ const all=[...b.values()],total=all.reduce((a,z)=>a+z.value,0),weightBase=total||all.reduce((a,z)=>a+z.cost,0);
+ $('brokersTable').innerHTML=[...b].map(([name,z])=>{const weight=weightBase?100*(total?z.value:z.cost)/weightBase:0;const tickers=[...z.tickers].sort();return `<tr><td><button type="button" onclick="showBroker('${esc(name)}')"><b>${esc(name)}</b> ↗</button></td><td>${money(z.value)}</td><td>${weight.toFixed(1)}%</td><td><details><summary>${tickers.length} instrumentos · Ver</summary><div>${tickers.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></details></td></tr>`}).join('')||'<tr><td colspan="4">Sin posiciones.</td></tr>';
+}
+const _adsShowBrokerV6=showBroker;
+showBroker=function(name){_adsShowBrokerV6(name);const panel=$('brokerDetail');if(!panel)return;const hs=brokerPositions().filter(x=>adsBrokerName(x.broker)===adsBrokerName(name));if(!hs.length)return;
+ const total=hs.reduce((a,x)=>a+positionValuation(x),0),cost=hs.reduce((a,x)=>a+x.cost,0),res=total-cost,pct=cost&&total?(total/cost-1)*100:null;
+ const tbody=panel.querySelector('tbody');if(tbody)tbody.innerHTML=hs.map(x=>{const p=Number(db.prices[x.ticker]?.ars)||0,v=positionMarketValue(x),r=v-x.cost,rp=x.cost&&v?(v/x.cost-1)*100:null;return `<tr><td>${esc(x.ticker)}</td><td>${esc(x.cat)}</td><td>${x.qty}</td><td>${money(displayPPC(x))}</td><td>${p?money(p):'—'}</td><td>${money(x.cost)}</td><td class="${r<0?'loss':'gain'}">${v?money(r):'—'}</td><td>${rp!=null?rp.toFixed(2)+'%':'—'}</td></tr>`}).join('');
+ const nums=panel.querySelectorAll('.metric-card .num');if(nums.length>=4){nums[0].textContent=money(cost);nums[1].textContent=money(total);nums[2].textContent=money(res);nums[3].textContent=pct!=null?pct.toFixed(2)+'%':'—'}
+};
+let adsCurveSerial=0;
+async function renderRFCurve(){
+ const box=$('rfCurve');if(!box)return;const serial=++adsCurveSerial;
+ const hs=holdings().filter(x=>isFixedCat(x.cat));if(!hs.length){box.innerHTML='<div class="notice">No hay posiciones de renta fija registradas.</div>';return}
+ const pts=[],missing=[];const today=new Date().toISOString().slice(0,10);
+ for(const x of hs){let sch=getSchedule(x.ticker);if(!sch){try{sch=await ensureSchedule(x.ticker)}catch(e){}}if(serial!==adsCurveSerial)return;
+ if(!sch){missing.push(x.ticker+' (sin calendario)');continue}
+ const cfs=simCashflows({ticker:x.ticker,qty:x.qty,date:today});if(!cfs.length){missing.push(x.ticker+' (sin cobros futuros)');continue}
+ const price=Number(db.prices?.[x.ticker]?.ars)||0;
+ const invested=price>0?x.qty*price/100:0;
+ if(!(invested>0)){missing.push(x.ticker+' (sin precio actual)');continue}
+ const tir=irrAnnual(cfs,invested,today)*100,dur=durationYears(cfs,today);
+ if(!Number.isFinite(tir)||tir<=-99||tir>300||!Number.isFinite(dur)||dur<=0){missing.push(x.ticker+' (TIR/duration no calculable)');continue}
+ pts.push({t:x.ticker,tir,dur,cur:sch.currency||'—'});
+ }
+ if(!pts.length){box.innerHTML='<div class="notice">No hay instrumentos con precio actual y calendario suficiente para calcular la curva. '+esc(missing.join(' · '))+'</div>';return}
+ const W=760,H=370,L=82,R=75,T=35,B=65;
+ const xs=pts.map(p=>p.dur),ys=pts.map(p=>p.tir),xmin=Math.max(0,Math.min(...xs)-Math.max(.25,(Math.max(...xs)-Math.min(...xs))*.18)),xmax=Math.max(...xs)+Math.max(.5,(Math.max(...xs)-Math.min(...xs))*.2);
+ let ymin=Math.min(...ys),ymax=Math.max(...ys),ypad=Math.max(3,(ymax-ymin)*.2);ymin-=ypad;ymax+=ypad;
+ const X=v=>L+(v-xmin)/(xmax-xmin)*(W-L-R),Y=v=>T+(ymax-v)/(ymax-ymin)*(H-T-B);
+ let grid='';for(let i=0;i<=4;i++){const x=xmin+(xmax-xmin)*i/4,px=X(x);grid+=`<line class="rf-grid" x1="${px}" y1="${T}" x2="${px}" y2="${H-B}"/><text class="rf-axis" x="${px}" y="${H-B+22}" text-anchor="middle">${x.toFixed(1)}</text>`;const y=ymin+(ymax-ymin)*i/4,py=Y(y);grid+=`<line class="rf-grid" x1="${L}" y1="${py}" x2="${W-R}" y2="${py}"/><text class="rf-axis" x="${L-10}" y="${py+4}" text-anchor="end">${y.toFixed(1)}%</text>`}
+ const dots=pts.map((p,i)=>{const x=X(p.dur),y=Y(p.tir),dy=i%2?19:-12;return `<g class="rf-dot" tabindex="0" role="button" aria-label="${esc(p.t)} TIR ${p.tir.toFixed(2)}% duration ${p.dur.toFixed(2)} años" onclick="openRFFlow('${esc(p.t)}')"><title>${esc(p.t)} · TIR ${p.tir.toFixed(2)}% · Duration ${p.dur.toFixed(2)} años</title><circle cx="${x}" cy="${y}" r="8"/><text x="${x+11}" y="${Math.max(T+12,Math.min(H-B-5,y+dy))}">${esc(p.t)}</text></g>`}).join('');
+ box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="TIR versus duration de posiciones con datos completos">${grid}<text class="rf-axis" x="${(L+W-R)/2}" y="${H-12}" text-anchor="middle">Duration (años)</text><text class="rf-axis" transform="translate(18 ${(T+H-B)/2}) rotate(-90)" text-anchor="middle">TIR anual</text>${dots}</svg><div id="rfCurveNotes">${pts.length} instrumento(s) graficados. ${missing.length?'<b>Sin datos suficientes:</b> '+esc(missing.join(' · ')):''} La TIR utiliza el precio actual disponible y los flujos futuros. La curva representa tus posiciones, no todos los bonos del mercado.</div>`;
+}
+const _adsRenderRFv7=renderRF;
+renderRF=function(){const r=_adsRenderRFv7.apply(this,arguments);Promise.resolve(r).finally(()=>renderRFCurve().catch(e=>console.warn('Curva',e)));return r};
+/* Mostrar el control biométrico si la sesión está abierta, incluso si WebAuthn no es compatible. */
+(function(){const btn=document.getElementById('adsBiometricBtn');if(!btn)return;setInterval(()=>{const login=document.getElementById('adsLogin'),bar=document.getElementById('adsCloudBar');if(!bar||getComputedStyle(bar).display==='none')return;const logged=login&&getComputedStyle(login).display==='none';if(logged){btn.style.setProperty('display','inline-block','important');if(!window.PublicKeyCredential||!window.isSecureContext){btn.textContent='Huella no compatible';btn.disabled=true}else{btn.disabled=false}}else btn.style.setProperty('display','none','important')},1100)})();
 </script>
