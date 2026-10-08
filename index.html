@@ -299,6 +299,9 @@ async function fetchCedearPublicData(t){
   }
   return null;
 }
+// Ratios opcionales: los personalizados se conservan en db.ratios.
+// No interrumpir la cotización si no existe un ratio precargado.
+const commonRatios=Object.create(null);
 const verifiedFallback={
   HUT:{ars:31400,usd:82.41,ratio:5,source:'Respaldo verificado 01/10/2026 · IOL/Yahoo',updated:'2026-10-01T12:23:30-04:00'}
 };
@@ -349,7 +352,7 @@ async function syncPortfolio(){
   adsQuoteRefreshPromise=(async()=>{
     const status=$('connStatus');
     if(status)status.textContent='Actualizando cotizaciones…';
-    let updated=0,missing=0;
+    let refreshed=0,failed=0;
     try{
       try{await Promise.race([syncFX(),new Promise(r=>setTimeout(r,5000))])}catch(e){}
       const positions=[...new Map(holdings().filter(x=>['CEDEAR','Acción','ETF','Bono','ON','Letra'].includes(x.cat)).map(x=>[x.ticker,x])).values()];
@@ -367,14 +370,14 @@ async function syncPortfolio(){
         db.prices[x.ticker]={...prev,ars,arsSource,source:arsSource,usd:Number(u?.usd)||Number(prev.usd)||0,usdSource:u?.source||prev.usdSource||'',ratio,theoretical,updated:new Date().toISOString()};
         const ch=Number(localQ?.change ?? u?.change);
         if(Number.isFinite(ch)){db.marketMeta=db.marketMeta||{};db.marketMeta[x.ticker]={...(db.marketMeta[x.ticker]||{}),change:ch}}
-        if(ars)updated++;else missing++;
+        if(Number(localQ?.ars)>0)refreshed++;else failed++;
       };
       let next=0;
-      const worker=async()=>{while(next<positions.length){const x=positions[next++];try{await work(x)}catch(e){missing++;console.warn('Cotización no disponible:',x.ticker,e)}}};
+      const worker=async()=>{while(next<positions.length){const x=positions[next++];try{await work(x)}catch(e){failed++;console.warn('Cotización no disponible:',x.ticker,e)}}};
       await Promise.all(Array.from({length:Math.min(5,positions.length)},worker));
       save();render();
       const detail=$('brokerDetail');if(detail&&!detail.classList.contains('hide')){const heading=detail.querySelector('h3');if(heading)showBroker(heading.textContent)}
-      if(status)status.textContent='Consulta finalizada · '+updated+' con precio · '+missing+' sin cotización · '+fmtDateTime(new Date());
+      if(status){const available=positions.filter(x=>Number(db.prices?.[x.ticker]?.ars)>0).length;status.textContent='Consulta finalizada · '+available+' con precio guardado · '+(positions.length-available)+' sin precio · '+refreshed+' cotizaciones nuevas · '+fmtDateTime(new Date());}
     }catch(e){console.error('Error al actualizar cotizaciones:',e);if(status)status.textContent='No se pudo completar la actualización. Reintentá más tarde.'}
   })();
   try{return await adsQuoteRefreshPromise}finally{adsQuoteRefreshPromise=null}
