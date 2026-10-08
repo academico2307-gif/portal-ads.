@@ -52,6 +52,32 @@ main:before{content:'AS';position:fixed;right:3vw;bottom:1vh;z-index:-1;font:900
  body{font-size:13px}.side{padding:10px 10px 8px;position:sticky;top:0;z-index:50;background:#0c1722}.logo{font-size:18px;margin:2px 0 8px}.nav{padding-bottom:4px}.nav button{padding:8px 10px}.top{position:relative}.top h2{font-size:20px;margin:4px 0}.top .actions{width:100%}.top .actions button{flex:1}.card{padding:12px;margin-top:10px}.cards,.grid4{gap:8px}.section-head{align-items:flex-start;flex-wrap:wrap}.section-head .actions{width:100%}.section-head .actions button{flex:1}.portfolio-table-wrap{padding:4px}.portfolio-table-wrap table{min-width:920px}.perf-broker-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}.perf-broker-table{min-width:900px}.heatmap-box{height:420px}.tv-chart-large{height:480px!important;min-height:480px!important}.modal-panel{padding:10px!important}.modal-widget{min-height:360px!important}.modal-widget.wide{min-height:420px!important}.analyst-layout{grid-template-columns:1fr}.actions button{min-height:40px}input,select,textarea{font-size:16px!important}
 }
 </style>
+<style id="ads-mobile-movements-fix">
+/* Ajustes limitados a pantallas pequeñas; sin cambios en datos ni cálculos */
+@media(max-width:600px){
+ html,body{width:100%;max-width:100%;overflow-x:hidden}
+ .app,main,.view,.card{min-width:0;max-width:100%}
+ main{width:100%;margin:0;padding:10px}
+ .side{max-width:100%;padding:6px 10px 7px}
+ .ads-brand{margin:0 0 7px;padding:0 0 7px}
+ .ads-brand img{width:112px!important;max-width:112px!important}
+ .side .notice{font-size:11px;padding:6px 8px;margin-top:6px}
+ .nav{max-width:100%;overflow-x:auto}
+ #movimientos>.card{padding:10px;margin-top:8px;overflow:hidden}
+ #movimientos h3{margin:8px 0}
+ #movimientos .form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 9px}
+ #movimientos .form label{min-width:0;max-width:100%;gap:3px;font-size:11px;overflow-wrap:anywhere}
+ #movimientos .form input,#movimientos .form select,#movimientos .form textarea{width:100%;min-width:0;max-width:100%;padding:8px 7px;border-radius:7px}
+ #movimientos .form label.wide{grid-column:1/-1}
+ #movimientos #fnote{min-height:48px;height:48px;resize:vertical}
+ #movimientos .actions{gap:6px;margin-top:8px}
+ #movimientos .actions button{padding:8px 10px;min-height:36px}
+ #movimientos .card.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ #movimientos .card.scroll table{min-width:620px;width:100%}
+ #movimientos .card.scroll th,#movimientos .card.scroll td{white-space:nowrap}
+ #movimientos #sheetImport{max-width:100%;overflow:hidden}
+}
+</style>
 </head><body><div id="assetModal" aria-modal="true" role="dialog"></div><div class="app">
 <aside class="side"><div class="ads-brand"><img src="portal-ads-logo.png" alt="AS · PORTAL ADS" style="display:block;width:100%;max-width:238px;margin:0 auto;height:auto"></div><div class="nav">
 <button class="active nav-tab" data-tab="inicio" onclick="show('inicio',this)">◈ Resumen</button><button class="nav-tab" data-tab="cartera" onclick="show('cartera',this)">▦ Portafolio</button><button class="nav-tab" data-tab="movimientos" onclick="show('movimientos',this)">↕ Movimientos</button><button class="nav-tab" data-tab="renta" onclick="show('renta',this)">▤ Renta fija</button><button class="nav-tab" data-tab="flujo" onclick="show('flujo',this)">⌁ Flujo / Simulador</button><button class="nav-tab" data-tab="mercado" onclick="show('mercado',this)">◎ Mercado</button><button class="nav-tab" data-tab="alertas" onclick="show('alertas',this)">⚑ Alertas</button><button class="nav-tab" data-tab="rendimiento" onclick="show('rendimiento',this)">⌁ Rendimiento</button><button class="nav-tab" data-tab="brokers" onclick="show('brokers',this)">▣ Brokers</button><button class="nav-tab" data-tab="config" onclick="show('config',this)">⚙ Configuración</button></div>
@@ -603,7 +629,7 @@ refreshOpportunities=async function(){const box=$('opportunities');if(!box)retur
 
 compareSP500=async function(){const el=$('spCompare');if(!el)return;el.textContent='Consultando S&P 500…';const dates=(db.moves||[]).map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort();if(!dates.length){el.textContent='Sin movimientos para definir el inicio de la comparación.';return}const start=dates[0],sp=await sp500ReturnFrom(start);const hs=holdings(),cur=hs.reduce((a,x)=>a+positionValuation(x),0),net=(db.moves||[]).reduce((a,m)=>a+(String(m.type).toLowerCase()==='compra'?canonicalMoveAmount(m):String(m.type).toLowerCase()==='venta'?-canonicalMoveAmount(m):0),0),port=net>0?(cur/net-1)*100:null;if(sp==null){el.textContent='No pude obtener el histórico del S&P 500 en este momento.';return}const cls=v=>v<0?'loss':'gain';el.innerHTML=`Desde ${fmtDate(start)} · Tu cartera: <b class="${cls(port||0)}">${port==null?'—':(port>=0?'+':'')+port.toFixed(2)+'%'}</b> · S&amp;P 500: <b class="${cls(sp)}">${sp>=0?'+':''}${sp.toFixed(2)}%</b>${port==null?'':` · Diferencia: <b class="${cls(port-sp)}">${port-sp>=0?'+':''}${(port-sp).toFixed(2)} pp</b>`}`;$('perfSP').textContent=(sp>=0?'+':'')+sp.toFixed(2)+'%';$('perfSP').className='value '+cls(sp)};
 
-const _loadArgentinaMacroFinal=loadArgentinaMacro;loadArgentinaMacro=async function(){await _loadArgentinaMacroFinal();const e=$('macroCaucion');if(!e)return;e.textContent='Consultando…';try{const txt=await fetchTextChain('https://valordolarblue.ar/merval/cauciones');const m=txt&&txt.match(/Cauci[oó]n a 1 d[ií]a[^0-9]{0,120}([0-9]{1,3}[,.][0-9]{1,2})%/i);if(m){e.textContent=m[1].replace(',','.')+'% TNA';e.title='Caución ARS 1 día · referencia BYMA';return}}catch(err){}e.textContent='—'};
+const _loadArgentinaMacroFinal=loadArgentinaMacro;loadArgentinaMacro=async function(){await _loadArgentinaMacroFinal();const e=$('macroCaucion');if(e){e.textContent='—';e.title='Caución sin fuente automática verificable disponible. No se muestra una tasa estimada.'}};
 </script>
 
 
