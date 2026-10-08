@@ -78,7 +78,27 @@ main:before{content:'AS';position:fixed;right:3vw;bottom:1vh;z-index:-1;font:900
  #movimientos #sheetImport{max-width:100%;overflow:hidden}
 }
 </style>
-</head><body><div id="assetModal" aria-modal="true" role="dialog"></div><div class="app">
+<style id="ads-mobile-v6">
+@media(max-width:600px){
+html,body,.app,main,.view,#movimientos{max-width:100%;min-width:0;overflow-x:clip}
+#movimientos>.card{width:100%;max-width:100%;min-width:0;overflow:hidden;padding:10px}
+#movimientos>.card>.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 9px;min-width:0;width:100%}
+#movimientos>.card>.form>label{display:flex;min-width:0;max-width:100%;width:100%;overflow-wrap:anywhere;gap:4px;font-size:11px;line-height:1.2}
+#movimientos>.card>.form>label input,#movimientos>.card>.form>label select,#movimientos>.card>.form>label textarea{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;padding:9px 7px;font-size:16px!important}
+#movimientos>.card>.form>label.wide{grid-column:1/-1}
+#movimientos>.card>.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+#movimientos>.card>.actions button{min-width:0;padding:9px 5px;white-space:normal}
+#movimientos>.card.scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+#movimientos>.card.scroll table{min-width:610px}
+#movimientos #sheetImport .form{grid-template-columns:repeat(2,minmax(0,1fr))}
+#movimientos #sheetImport .form label{min-width:0}
+#movimientos #sheetImport .form input,#movimientos #sheetImport .form select,#movimientos #sheetImport .form textarea{width:100%;min-width:0}
+}
+#adsDeviceLock{position:fixed;inset:0;z-index:10010;background:#06111cf5;color:#eaf4fa;display:none;align-items:center;justify-content:center;padding:20px;font-family:Arial,sans-serif}
+#adsDeviceLock .panel{width:min(410px,100%);padding:24px;border:1px solid #31536b;border-radius:16px;background:#0c1722;text-align:center}
+#adsDeviceLock button{display:block;width:100%;margin-top:12px;padding:12px;background:#17543f;color:white;border:1px solid #287b5b;border-radius:9px}
+#adsDeviceLock p{color:#afc2cf;line-height:1.5}
+</style></head><body><div id="assetModal" aria-modal="true" role="dialog"></div><div class="app">
 <aside class="side"><div class="ads-brand"><img src="portal-ads-logo.png" alt="AS · PORTAL ADS" style="display:block;width:100%;max-width:238px;margin:0 auto;height:auto"></div><div class="nav">
 <button class="active nav-tab" data-tab="inicio" onclick="show('inicio',this)">◈ Resumen</button><button class="nav-tab" data-tab="cartera" onclick="show('cartera',this)">▦ Portafolio</button><button class="nav-tab" data-tab="movimientos" onclick="show('movimientos',this)">↕ Movimientos</button><button class="nav-tab" data-tab="renta" onclick="show('renta',this)">▤ Renta fija</button><button class="nav-tab" data-tab="flujo" onclick="show('flujo',this)">⌁ Flujo / Simulador</button><button class="nav-tab" data-tab="mercado" onclick="show('mercado',this)">◎ Mercado</button><button class="nav-tab" data-tab="alertas" onclick="show('alertas',this)">⚑ Alertas</button><button class="nav-tab" data-tab="rendimiento" onclick="show('rendimiento',this)">⌁ Rendimiento</button><button class="nav-tab" data-tab="brokers" onclick="show('brokers',this)">▣ Brokers</button><button class="nav-tab" data-tab="config" onclick="show('config',this)">⚙ Configuración</button></div>
 <div class="notice small">Datos locales + conexiones web. Exportá una copia desde Configuración.</div></aside>
@@ -1023,7 +1043,42 @@ if($('perfARSBtn'))$('perfARSBtn').onclick=()=>renderMonthlyPerformance('ARS');i
 if('serviceWorker' in navigator && location.protocol!=='file:'){
   navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.filter(r=>r.scope.startsWith(location.origin+location.pathname.replace(/[^/]*$/,''))).map(r=>r.unregister()))).catch(()=>{});
 }
-</script></body></html>
+</script><script>
+/* ADS v6 · bloqueo local por credencial del dispositivo. No sustituye autenticación de Supabase. */
+(function(){
+ const IDKEY='ads_device_credential_v1', lock=document.getElementById('adsDeviceLock');
+ const enable=document.getElementById('adsBiometricBtn'), unlock=document.getElementById('adsUnlockBtn');
+ const message=document.getElementById('adsUnlockMsg');
+ let backgroundAt=null, locked=false, running=false;
+ const supported=!!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);
+ const bytes=a=>Uint8Array.from(atob(a.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+ const b64=a=>btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+ function credential(){try{return JSON.parse(localStorage.getItem(IDKEY)||'null')}catch(_){return null}}
+ function signedIn(){return document.getElementById('adsLogin')?.style.display==='none'}
+ function syncButton(){if(!enable)return;enable.style.display=supported&&signedIn()?'inline-block':'none';enable.textContent=credential()?'Huella activada':'Activar huella'}
+ async function enroll(){if(!supported){alert('Este navegador no admite desbloqueo por credencial del dispositivo.');return}try{
+  const c=await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:'Portal ADS'},user:{id:crypto.getRandomValues(new Uint8Array(24)),name:'portalads-local',displayName:'Portal ADS en este dispositivo'},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'discouraged'},attestation:'none',timeout:60000}});
+  if(!c)throw Error('No se registró una credencial');
+  localStorage.setItem(IDKEY,JSON.stringify({id:b64(c.rawId)}));syncButton();alert('Desbloqueo del dispositivo activado. El bloqueo se aplicará después de 5 segundos fuera de la aplicación.');
+ }catch(e){alert('No se pudo activar la huella o el desbloqueo del dispositivo: '+(e.message||e))}}
+ async function open(){if(running)return;const c=credential();if(!c)return;running=true;unlock.disabled=true;message.textContent='Esperando confirmación del teléfono…';try{
+ const assertion=await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),allowCredentials:[{type:'public-key',id:bytes(c.id)}],userVerification:'required',timeout:60000}});
+ if(!assertion||b64(assertion.rawId)!==c.id)throw Error('La credencial no coincide');
+ // La verificación de la firma debe realizarse en un servidor para seguridad fuerte.
+ locked=false;lock.style.display='none';message.textContent='';
+ }catch(e){message.textContent='No se pudo desbloquear. Intentá nuevamente o cerrá sesión.'}finally{running=false;unlock.disabled=false}}
+ function check(){if(document.hidden)return;syncButton();if(!signedIn()){lock.style.display='none';locked=false;return}if(!credential())return;if(backgroundAt!==null&&Date.now()-backgroundAt>=5000){locked=true;lock.style.display='flex';message.textContent='';}backgroundAt=null;if(locked)lock.style.display='flex'}
+ document.addEventListener('visibilitychange',()=>{if(document.hidden){backgroundAt=Date.now()}else check()});
+ window.addEventListener('pagehide',()=>{backgroundAt=Date.now();try{sessionStorage.setItem('ads_bg_at',String(backgroundAt))}catch(_){}});
+ window.addEventListener('pageshow',()=>{try{const t=Number(sessionStorage.getItem('ads_bg_at'));if(t&&Date.now()-t>=5000)backgroundAt=t;sessionStorage.removeItem('ads_bg_at')}catch(_){}setTimeout(check,450)});
+ enable?.addEventListener('click',()=>{if(credential()){if(confirm('¿Desactivar el desbloqueo del dispositivo en este navegador?')){localStorage.removeItem(IDKEY);syncButton()}}else enroll()});
+ unlock?.addEventListener('click',open);
+ document.getElementById('adsLockLogoutBtn')?.addEventListener('click',()=>{lock.style.display='none';locked=false;document.getElementById('adsLogoutBtn')?.click();syncButton()});
+ document.getElementById('adsLogoutBtn')?.addEventListener('click',()=>{lock.style.display='none';locked=false;syncButton()});
+ setInterval(check,1500);setTimeout(check,1800);
+})();
+</script>
+</body></html>
 <style>
 /* Ajuste legibilidad ficha 05/10 */
 #assetModal .modal-widget,#assetModal .modal-widget *{font-size:17px!important;line-height:1.52!important}
@@ -1210,7 +1265,8 @@ const _renderRFcurveBase=renderRF;renderRF=function(){const r=_renderRFcurveBase
 <div id="adsLogin">
  <div class="box"><h2>Portal ADS</h2><p>Ingresá con el usuario que creaste en Supabase. Esta cuenta mantiene una única cartera sincronizada entre tus dispositivos.</p><label>Correo electrónico<input id="adsEmail" type="email" autocomplete="username"></label><label>Contraseña<input id="adsPass" type="password" autocomplete="current-password"></label><button id="adsLoginBtn" type="button">Entrar a mi cartera</button><div id="adsLoginMsg"></div></div>
 </div>
-<div id="adsCloudBar"><span id="adsCloudStatus">Nube</span><button id="adsLogoutBtn" type="button">Salir</button></div>
+<div id="adsCloudBar"><span id="adsCloudStatus">Nube</span><button id="adsBiometricBtn" type="button" style="display:none">Activar huella</button><button id="adsLogoutBtn" type="button">Salir</button></div>
+<div id="adsDeviceLock"><div class="panel"><h2>🔒 Portal ADS bloqueado</h2><p>Usá la huella o el desbloqueo del teléfono para continuar.</p><button id="adsUnlockBtn" type="button">Desbloquear con el teléfono</button><p id="adsUnlockMsg" style="font-size:12px"></p><button id="adsLockLogoutBtn" type="button" style="background:#172737">Salir de mi cuenta</button></div></div>
 <script>
 /* === PORTAL ADS · NUBE PRIVADA SUPABASE · 07/10/2026 === */
 (function(){
