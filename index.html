@@ -244,7 +244,7 @@ async function showInstrument(t){
   const safe=(fn,ms=2600)=>Promise.race([Promise.resolve().then(fn).catch(()=>null),new Promise(r=>setTimeout(()=>r(null),ms))]);
   const isLocalArg=x.cat==='Acción'||isFixedCat(x.cat);
   const [localQ,u]=await Promise.all([safe(()=>isLocalArg?fetchArgentinaQuote(t,x.cat):fetchLocalQuote(t)),safe(()=>isLocalArg?null:fetchUSQuote(t))]);
-  const ratio=Number(db.ratios[t])||Number(localQ?.ratio)||Number(meta.ratio)||Number(commonRatios[t])||0,ccl=Number(db.fx?.ccl)||0;
+  const ratio=Number(db.ratios[t])||Number(localQ?.ratio)||Number(meta.ratio)||Number((typeof commonRatios!=="undefined"?commonRatios:{} )[t])||0,ccl=Number(db.fx?.ccl)||0;
   let local=Number(localQ?.ars)||local0; const usdNow=Number(u?.usd)||usd0; if(!local&&usdNow&&ccl&&ratio)local=usdNow*ccl/ratio;
   const ch=Number(localQ?.change ?? u?.change); db.marketMeta=db.marketMeta||{}; db.marketMeta[t]={...(db.marketMeta[t]||{}),price:local||local0,source:localQ?.source||u?.source||meta.source||'',change:Number.isFinite(ch)?ch:db.marketMeta[t]?.change}; db.prices[t]={...(db.prices[t]||{}),ars:local||local0,usd:usdNow,ratio,source:localQ?.source||u?.source||p.source||'',updated:new Date().toISOString()}; save();
   const q=id=>$(id); if(q('fiLocal_'+id))q('fiLocal_'+id).textContent=local?money(local):'No disponible'; if(q('fiUsd_'+id))q('fiUsd_'+id).textContent=usdNow?usd(usdNow):'No disponible'; if(q('fiSource_'+id))q('fiSource_'+id).textContent=localQ?.source||u?.source||'Sin respuesta externa'; if(local&&q('fiResult_'+id)){const rr=x.qty*local-x.cost,rp=x.cost?rr/x.cost*100:null;q('fiResult_'+id).textContent=money(rr);q('fiResult_'+id).className='num '+(rr<0?'loss':'gain');q('fiResultPct_'+id).textContent=rp==null?'—':rp.toFixed(2)+'%'}
@@ -314,14 +314,20 @@ async function fetchTextChain(target){const urls=[target,'https://corsproxy.io/?
 async function sp500ReturnFrom(start){try{const target='https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=2y&interval=1d';const j=await fetchJsonChain(target),r=j?.chart?.result?.[0],ts=r?.timestamp||[],cl=r?.indicators?.quote?.[0]?.close||[];let first=null,last=null;for(let i=0;i<ts.length;i++){const d=new Date(ts[i]*1000).toISOString().slice(0,10),v=Number(cl[i]);if(v&&d>=start&&first==null)first=v;if(v)last=v}if(first&&last)return(last/first-1)*100}catch(e){}try{const txt=await fetchTextChain('https://stooq.com/q/d/l/?s=%5Espx&i=d');if(txt){const lines=txt.trim().split(/\r?\n/).slice(1);let first=null,last=null;for(const line of lines){const c=line.split(','),d=c[0],v=Number(c[4]);if(v&&d>=start&&first==null)first=v;if(v)last=v}if(first&&last)return(last/first-1)*100}}catch(e){}return null}
 
 let data912Cache={at:0,cedears:null,stocks:null,bonds:null,corp:null,usa:null,ccl:null};
+const adsData912Pending=Object.create(null);
 async function fetchData912(kind){
-  if(Date.now()-data912Cache.at<120000 && data912Cache[kind])return data912Cache[kind];
+  const now=Date.now();
+  if(data912Cache[kind] && now-(data912Cache[kind].at||0)<120000)return data912Cache[kind].data;
+  if(adsData912Pending[kind])return adsData912Pending[kind];
   const path={cedears:'/live/arg_cedears',stocks:'/live/arg_stocks',bonds:'/live/arg_bonds',corp:'/live/arg_corp',usa:'/live/usa_stocks',ccl:'/live/ccl'}[kind];
   if(!path)return null;
-  const j=await fetchJsonChain('https://data912.com'+path);
-  if(j){data912Cache[kind]=j;data912Cache.at=Date.now()}
-  return j;
+  adsData912Pending[kind]=(async()=>{
+    try{const j=await fetchJsonChain('https://data912.com'+path);data912Cache[kind]={at:Date.now(),data:j};return j;}
+    finally{delete adsData912Pending[kind]}
+  })();
+  return adsData912Pending[kind];
 }
+
 function findMarketRow(rows,t){
   const a=Array.isArray(rows)?rows:(rows?.data||rows?.results||[]);
   return a.find(x=>String(x.symbol||x.ticker||x.ticker_ar||'').toUpperCase()===String(t).toUpperCase())||null;
@@ -337,12 +343,12 @@ async function fetchUSQuote(t){
 async function fetchArgentinaQuote(t,cat){t=String(t||'').toUpperCase();if(String(cat||'').toLowerCase().startsWith('acción')&&t==='PAM')t='PAMP';const kinds=isFixedCat(cat)?(cat==='ON'?['corp','bonds']:['bonds','corp']):['stocks'];for(const kind of kinds){try{const rows=await fetchData912(kind);const x=findMarketRow(rows,t);const px=Number(x?.c||x?.close||x?.price)||0;if(px){const ch=Number(x?.change_percent??x?.changePercent??x?.pct_change??x?.variation??x?.change);return {ars:px,source:'Data912 '+(kind==='stocks'?'Acciones AR':kind==='bonds'?'Bonos AR':'ON AR'),symbol:t,change:Number.isFinite(ch)?ch:null}}}catch(e){}}for(const sym of [t+'.BA',t]){const q=await fetchYahooChart(sym);if(q?.price)return {ars:q.price,source:q.source+' · '+sym,symbol:sym,change:q.change}}return null}
 async function fetchLocalQuote(t){
   t=String(t||'').toUpperCase();
-  try{const rows=await fetchData912('cedears');const x=findMarketRow(rows,t);const px=Number(x?.c||x?.close||x?.price)||0;if(px){const ch=Number(x?.change_percent??x?.changePercent??x?.pct_change??x?.variation??x?.change);return {ars:px,ratio:Number(commonRatios[t])||0,source:'Data912 CEDEAR',symbol:t,change:Number.isFinite(ch)?ch:null}}}catch(e){}
-  const publicData=await fetchCedearPublicData(t); if(publicData?.ars)return {ars:publicData.ars,ratio:publicData.ratio||Number(commonRatios[t])||0,theoretical:publicData.theoretical,impliedCcl:publicData.impliedCcl,source:publicData.source,symbol:t};
-  for(const sym of [t+'.BA',t]){const q=await fetchYahooChart(sym);if(q&&(!q.currency||String(q.currency).toUpperCase()==='ARS'||sym.endsWith('.BA')))return {ars:q.price,ratio:Number(commonRatios[t])||0,source:q.source+' · '+sym,symbol:sym,change:q.change}}
-  const fb=verifiedFallback[t]; return fb?.ars?{ars:fb.ars,ratio:fb.ratio||Number(commonRatios[t])||0,source:fb.source,symbol:t,delayed:true}:null;
+  try{const rows=await fetchData912('cedears');const x=findMarketRow(rows,t);const px=Number(x?.c||x?.close||x?.price)||0;if(px){const ch=Number(x?.change_percent??x?.changePercent??x?.pct_change??x?.variation??x?.change);return {ars:px,ratio:Number((typeof commonRatios!=="undefined"?commonRatios:{} )[t])||0,source:'Data912 CEDEAR',symbol:t,change:Number.isFinite(ch)?ch:null}}}catch(e){}
+  const publicData=await fetchCedearPublicData(t); if(publicData?.ars)return {ars:publicData.ars,ratio:publicData.ratio||Number((typeof commonRatios!=="undefined"?commonRatios:{} )[t])||0,theoretical:publicData.theoretical,impliedCcl:publicData.impliedCcl,source:publicData.source,symbol:t};
+  for(const sym of [t+'.BA',t]){const q=await fetchYahooChart(sym);if(q&&(!q.currency||String(q.currency).toUpperCase()==='ARS'||sym.endsWith('.BA')))return {ars:q.price,ratio:Number((typeof commonRatios!=="undefined"?commonRatios:{} )[t])||0,source:q.source+' · '+sym,symbol:sym,change:q.change}}
+  const fb=verifiedFallback[t]; return fb?.ars?{ars:fb.ars,ratio:fb.ratio||Number((typeof commonRatios!=="undefined"?commonRatios:{} )[t])||0,source:fb.source,symbol:t,delayed:true}:null;
 }
-async function searchAsset(){const t=($('assetTicker').value||'').trim().toUpperCase();if(!t)return;try{await syncBYMA()}catch(e){}const meta=db.marketMeta?.[t]||{};let p=db.prices[t]||{};const [localQ,u]=await Promise.all([fetchLocalQuote(t),fetchUSQuote(t)]);const ratio=Number(db.ratios[t])||Number(localQ?.ratio)||Number(meta.ratio)||Number(commonRatios[t])||0;const ccl=Number(db.fx?.ccl)||0;const theoretical=Number(localQ?.theoretical)||((u?.usd&&ccl&&ratio)?u.usd*ccl/ratio:0);const local=Number(localQ?.ars)||Number(meta.price||p.ars)||Number(theoretical)||0;const dev=(local&&theoretical)?(local/theoretical-1)*100:0;db.prices[t]={...(db.prices[t]||{}),ars:local,usd:u?.usd||p.usd||0,ratio,source:meta.source||p.source||'',theoretical,fair:theoretical};localStorage.setItem(KEY,JSON.stringify(db));render();$('assetPanel').classList.remove('hide');$('assetPanel').innerHTML='<div class="section-head"><h3>'+esc(t)+' · '+(meta.currency||'Activo')+'</h3><span class="pill">'+esc(meta.source||'Fuente pública')+'</span></div><div class="grid4"><div><div class="label">Precio local</div><div class="value">'+(local?money(local):'—')+'</div></div><div><div class="label">Subyacente USD</div><div class="value">'+(u?.usd||p.usd?usd(u?.usd||p.usd):'—')+'</div></div><div><div class="label">Ratio</div><div class="value">'+(ratio||'—')+'</div></div><div><div class="label">CCL</div><div class="value">'+(ccl?money(ccl):'—')+'</div></div></div><div class="grid4"><div><div class="label">Valor teórico CDR</div><div class="value">'+(theoretical?money(theoretical):'—')+'</div></div><div><div class="label">Desarbitraje</div><div class="value '+(dev<0?'gain':dev>0?'loss':'')+'">'+(theoretical?(dev>=0?'+':'')+dev.toFixed(2)+'%':'—')+'</div></div><div><div class="label">Vencimiento</div><div class="value">'+(meta.maturity?new Date(meta.maturity+'T12:00:00').toLocaleDateString('es-AR'):'—')+'</div></div><div><div class="label">Variación</div><div class="value">'+(meta.change!=null?meta.change.toFixed(2)+'%':'—')+'</div></div></div>';
+async function searchAsset(){const t=($('assetTicker').value||'').trim().toUpperCase();if(!t)return;try{await syncBYMA()}catch(e){}const meta=db.marketMeta?.[t]||{};let p=db.prices[t]||{};const [localQ,u]=await Promise.all([fetchLocalQuote(t),fetchUSQuote(t)]);const ratio=Number(db.ratios[t])||Number(localQ?.ratio)||Number(meta.ratio)||Number((typeof commonRatios!=="undefined"?commonRatios:{} )[t])||0;const ccl=Number(db.fx?.ccl)||0;const theoretical=Number(localQ?.theoretical)||((u?.usd&&ccl&&ratio)?u.usd*ccl/ratio:0);const local=Number(localQ?.ars)||Number(meta.price||p.ars)||Number(theoretical)||0;const dev=(local&&theoretical)?(local/theoretical-1)*100:0;db.prices[t]={...(db.prices[t]||{}),ars:local,usd:u?.usd||p.usd||0,ratio,source:meta.source||p.source||'',theoretical,fair:theoretical};localStorage.setItem(KEY,JSON.stringify(db));render();$('assetPanel').classList.remove('hide');$('assetPanel').innerHTML='<div class="section-head"><h3>'+esc(t)+' · '+(meta.currency||'Activo')+'</h3><span class="pill">'+esc(meta.source||'Fuente pública')+'</span></div><div class="grid4"><div><div class="label">Precio local</div><div class="value">'+(local?money(local):'—')+'</div></div><div><div class="label">Subyacente USD</div><div class="value">'+(u?.usd||p.usd?usd(u?.usd||p.usd):'—')+'</div></div><div><div class="label">Ratio</div><div class="value">'+(ratio||'—')+'</div></div><div><div class="label">CCL</div><div class="value">'+(ccl?money(ccl):'—')+'</div></div></div><div class="grid4"><div><div class="label">Valor teórico CDR</div><div class="value">'+(theoretical?money(theoretical):'—')+'</div></div><div><div class="label">Desarbitraje</div><div class="value '+(dev<0?'gain':dev>0?'loss':'')+'">'+(theoretical?(dev>=0?'+':'')+dev.toFixed(2)+'%':'—')+'</div></div><div><div class="label">Vencimiento</div><div class="value">'+(meta.maturity?new Date(meta.maturity+'T12:00:00').toLocaleDateString('es-AR'):'—')+'</div></div><div><div class="label">Variación</div><div class="value">'+(meta.change!=null?meta.change.toFixed(2)+'%':'—')+'</div></div></div>';
 $('quoteBox').innerHTML='<b>'+esc(t)+'</b><br>Precio actual: '+(local?money(local):'—')+'<br>Subyacente: '+(u?.usd||p.usd?usd(u?.usd||p.usd):'—')+'<br>Ratio: '+(ratio||'—')+'<br>CCL: '+(ccl?money(ccl):'—')+'<br>Teórico: '+(theoretical?money(theoretical):'—')+'<br>Desarbitraje: '+(theoretical?(dev>=0?'+':'')+dev.toFixed(2)+'%':'—');
 $('assetStatus').textContent='Actualizado: '+new Date().toLocaleString('es-AR')+' · BYMA público. TradingView listo para cargar cuando lo solicites.';
 }
@@ -361,7 +367,7 @@ async function syncPortfolio(){
         const localPromise=x.cat==='CEDEAR'||x.cat==='ETF'?fetchLocalQuote(x.ticker):fetchArgentinaQuote(x.ticker,x.cat);
         const quotePromise=Promise.all([localPromise,(x.cat==='CEDEAR'||x.cat==='ETF')?fetchUSQuote(x.ticker):Promise.resolve(null)]);
         const [localQ,u]=await Promise.race([quotePromise,new Promise(r=>setTimeout(()=>r([null,null]),16000))]);
-        const ratio=Number(db.ratios[x.ticker])||Number(localQ?.ratio)||Number(db.marketMeta?.[x.ticker]?.ratio)||Number(commonRatios[x.ticker])||0;
+        const ratio=Number(db.ratios[x.ticker])||Number(localQ?.ratio)||Number(db.marketMeta?.[x.ticker]?.ratio)||Number((typeof commonRatios!=="undefined"?commonRatios:{} )[x.ticker])||0;
         const ccl=Number(db.fx?.ccl)||0;
         let ars=Number(localQ?.ars)||Number(db.marketMeta?.[x.ticker]?.price)||Number(prev.ars)||0;
         let arsSource=localQ?.source||(ars?db.marketMeta?.[x.ticker]?.source||prev.arsSource||prev.source:'');
@@ -377,7 +383,7 @@ async function syncPortfolio(){
       await Promise.all(Array.from({length:Math.min(5,positions.length)},worker));
       save();render();
       const detail=$('brokerDetail');if(detail&&!detail.classList.contains('hide')){const heading=detail.querySelector('h3');if(heading)showBroker(heading.textContent)}
-      if(status){const available=positions.filter(x=>Number(db.prices?.[x.ticker]?.ars)>0).length;status.textContent='Consulta finalizada · '+available+' con precio guardado · '+(positions.length-available)+' sin precio · '+refreshed+' cotizaciones nuevas · '+fmtDateTime(new Date());}
+      if(status){const available=positions.filter(x=>Number(db.prices?.[x.ticker]?.ars)>0).length;status.textContent='ADS v4 · '+available+' precios disponibles · '+(positions.length-available)+' pendientes · '+refreshed+' precios nuevos obtenidos · '+fmtDateTime(new Date());}
     }catch(e){console.error('Error al actualizar cotizaciones:',e);if(status)status.textContent='No se pudo completar la actualización. Reintentá más tarde.'}
   })();
   try{return await adsQuoteRefreshPromise}finally{adsQuoteRefreshPromise=null}
@@ -544,7 +550,7 @@ const _brokerSectionV5=brokerSection;brokerSection=function(cat){const c=String(
 setTimeout(()=>{mountOfficialMarketPanelsV5();renderMonthlyPerformance('ARS')},250);
 
 normalizeLegacyFixedIncome();initNavTabs();$('saveMoveBtn')?.addEventListener('click',addMove);clearForm();$('sDate').value=new Date().toISOString().slice(0,10);$('sTicker')?.addEventListener('input',updateSimInfo);render();setTimeout(()=>showHeatmapMode('market'),80);if(holdings().some(x=>['CEDEAR','Acción','ETF','Bono','ON','Letra'].includes(x.cat)))setTimeout(()=>Promise.race([syncPortfolio(),new Promise(r=>setTimeout(r,9000))]).catch(e=>console.warn('No se pudieron actualizar cotizaciones',e)),700);setTimeout(()=>refreshOpportunities().catch(()=>{}),1200);setTimeout(()=>compareSP500().catch(()=>{}),1600);setTimeout(()=>renderMonthlyPerformance('ARS'),200);renderMacro();
-</script><script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js").catch(()=>{});}</script>
+</script>
 <script>
 /* ===== PORTAL ADS · CIERRE FUNCIONAL 05/10 ===== */
 const ADS_LOCAL_ALIAS={MRSH:['MRSH','MMC'],MMC:['MMC','MRSH'],QQQ:['QQQ'],XLP:['XLP'],URA:['URA'],CCJ:['CCJ'],COME:['COME']};
@@ -985,8 +991,13 @@ if($('perfARSBtn'))$('perfARSBtn').onclick=()=>renderMonthlyPerformance('ARS');i
 })();
 </script>
 
-<script>if('serviceWorker' in navigator && location.protocol!=='file:'){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));}</script>
-</body></html>
+
+<script>
+// ADS v4: retire obsolete cache workers; data in localStorage is not changed.
+if('serviceWorker' in navigator && location.protocol!=='file:'){
+  navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.filter(r=>r.scope.startsWith(location.origin+location.pathname.replace(/[^/]*$/,''))).map(r=>r.unregister()))).catch(()=>{});
+}
+</script></body></html>
 <style>
 /* Ajuste legibilidad ficha 05/10 */
 #assetModal .modal-widget,#assetModal .modal-widget *{font-size:17px!important;line-height:1.52!important}
